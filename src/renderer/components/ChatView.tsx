@@ -325,12 +325,15 @@ export function ChatView() {
 
     // Process other files
     if (otherFiles.length > 0) {
-      const newFiles = otherFiles.map(file => ({
-        name: file.name,
-        path: file.path || '', // Electron provides path property
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-      }));
+      const newFiles = otherFiles.map(file => {
+        const filePath = (file as File & { path?: string }).path ?? '';
+        return {
+          name: file.name,
+          path: filePath,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+        };
+      });
 
       setAttachedFiles(prev => [...prev, ...newFiles]);
     }
