@@ -288,6 +288,35 @@ function ToolUseBlock({ block }: { block: ToolUseContent }) {
     return <TodoWriteBlock block={block} />;
   }
 
+  // Helper to convert sandbox absolute paths to relative paths for display
+  const formatInputForDisplay = (input: Record<string, unknown>): Record<string, unknown> => {
+    const sandboxPattern = /^(\/Users\/[^/]+\/\.claude\/sandbox\/[^/]+|\/root\/\.claude\/sandbox\/[^/]+|\/home\/[^/]+\/\.claude\/sandbox\/[^/]+)\//;
+
+    const convertPath = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        // Check if it's a sandbox path and convert to relative
+        const match = value.match(sandboxPattern);
+        if (match) {
+          return value.substring(match[0].length - 1); // Keep the leading / or convert to relative
+        }
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map(convertPath);
+      }
+      if (value && typeof value === 'object') {
+        const result: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value)) {
+          result[k] = convertPath(v);
+        }
+        return result;
+      }
+      return value;
+    };
+
+    return convertPath(input) as Record<string, unknown>;
+  };
+
   // Get a more descriptive title based on tool name
   const getToolTitle = (name: string) => {
     // Check if this is an MCP tool (format: mcp__ServerName__toolname)
@@ -369,7 +398,7 @@ function ToolUseBlock({ block }: { block: ToolUseContent }) {
           <div>
             <p className="text-xs font-medium text-text-muted mb-2">Request</p>
             <pre className="code-block text-xs">
-              {JSON.stringify(block.input, null, 2)}
+              {JSON.stringify(formatInputForDisplay(block.input as Record<string, unknown>), null, 2)}
             </pre>
           </div>
         </div>

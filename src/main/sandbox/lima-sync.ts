@@ -16,6 +16,8 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
 import { log, logError } from '../utils/logger';
 
 const execAsync = promisify(exec);
@@ -110,15 +112,15 @@ export class LimaSync {
     log(`[LimaSync] Initializing sync for session ${sessionId}`);
     log(`[LimaSync]   macOS path: ${macPath}`);
 
-    // Get the actual home directory path from Lima
-    const homeResult = await this.limaExec('cd ~ && pwd');
-    const homeDir = homeResult.stdout.trim() || '/home/user';
-    const sandboxPath = `${homeDir}/.claude/sandbox/${sessionId}`;
+    // Use macOS user's home directory for sandbox (accessible from both macOS and Lima)
+    // Lima mounts /Users at /Users, so this path is accessible from both sides
+    const macHomeDir = process.env.HOME || `/Users/${process.env.USER || 'user'}`;
+    const sandboxPath = `${macHomeDir}/.claude/sandbox/${sessionId}`;
     log(`[LimaSync]   Sandbox path: ${sandboxPath}`);
 
     try {
-      // Create sandbox directory
-      await this.limaExec(`mkdir -p "${sandboxPath}"`);
+      // Create sandbox directory on macOS (accessible from both macOS and Lima via /Users mount)
+      fs.mkdirSync(sandboxPath, { recursive: true });
 
       // Lima mounts /Users at /Users, so paths are the same
       const limaSourcePath = macPath;
@@ -245,8 +247,8 @@ export class LimaSync {
       // First sync back to macOS
       await this.syncToMac(sessionId);
 
-      // Then delete sandbox directory
-      await this.limaExec(`rm -rf "${session.sandboxPath}"`);
+      // Then delete sandbox directory (on macOS local filesystem)
+      fs.rmSync(session.sandboxPath, { recursive: true, force: true });
       log(`[LimaSync] Sandbox deleted: ${session.sandboxPath}`);
     } catch (error) {
       logError(`[LimaSync] Cleanup error:`, error);
@@ -273,20 +275,17 @@ export class LimaSync {
       };
     }
 
-    const sandboxDestPath = `${session.sandboxPath}/${sandboxRelativePath}`;
+    const sandboxDestPath = path.join(session.sandboxPath, sandboxRelativePath);
     log(`[LimaSync] Syncing file to sandbox: ${macSourcePath} -> ${sandboxDestPath}`);
 
     try {
-      const destDir = sandboxDestPath.substring(0, sandboxDestPath.lastIndexOf('/'));
+      const destDir = path.dirname(sandboxDestPath);
 
-      // Create parent directory
-      await this.limaExec(`mkdir -p "${destDir}"`);
+      // Create parent directory (on macOS local filesystem)
+      fs.mkdirSync(destDir, { recursive: true });
 
-      // Copy file (Lima mounts /Users directly)
-      const cpCmd = `cp "${macSourcePath}" "${sandboxDestPath}"`;
-      log(`[LimaSync] Running: ${cpCmd}`);
-
-      await this.limaExec(cpCmd, 60000); // 1 min timeout
+      // Copy file (on macOS local filesystem)
+      fs.copyFileSync(macSourcePath, sandboxDestPath);
 
       log(`[LimaSync] File synced to sandbox: ${sandboxDestPath}`);
 
